@@ -20,11 +20,6 @@ pip install -r requirements.txt
 3. Levantar API backend
 
 ```shell
-cd backend
-```
-Desplegar API local
-
-```shell
 uvicorn backend.main:app --reload
 ```
 
