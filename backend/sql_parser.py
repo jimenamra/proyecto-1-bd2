@@ -1,25 +1,18 @@
 import re
 
-class SQLParser:
-    def parse(self, query: str) -> dict:
-        """
-        Soporta consultas del tipo:
-        SELECT * FROM eventos WHERE campo1 = 'valor' AND campo2 BETWEEN x AND y ...
-        """
-        query = query.strip().lower()
-
-        if not query.startswith("select"):
-            raise ValueError("Solo se soportan consultas SELECT.")
-
-        condiciones = {}
-        # Extrae condiciones tipo campo = 'valor'
-        matches = re.findall(r"(\w+)\s*=\s*'([^']*)'", query)
-        for campo, valor in matches:
-            condiciones[campo] = valor
-
-        # Extrae rangos tipo lat BETWEEN a AND b
-        rangos = re.findall(r"(\w+)\s+between\s+(-?\d+\.?\d*)\s+and\s+(-?\d+\.?\d*)", query)
-        for campo, val1, val2 in rangos:
-            condiciones[campo + "_between"] = (float(val1), float(val2))
-
-        return condiciones
+def parse_sql(sql: str):
+    sql = sql.strip().lower()
+    if sql.startswith("insert into"):
+        val = int(re.search(r'values\s*\((\d+)\)', sql).group(1))
+        return ("insert", val)
+    elif sql.startswith("select") and "between" in sql:
+        nums = list(map(int, re.findall(r'\d+', sql)))
+        return ("range_search", nums[0], nums[1])
+    elif sql.startswith("select"):
+        key = int(re.search(r'where\s+\w+\s*=\s*(\d+)', sql).group(1))
+        return ("search", key)
+    elif sql.startswith("delete"):
+        key = int(re.search(r'where\s+\w+\s*=\s*(\d+)', sql).group(1))
+        return ("delete", key)
+    else:
+        return ("unknown",)

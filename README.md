@@ -2,7 +2,16 @@
 
 Sistema de hallazgos 
 
-1. Levantar API backend
+1. Activar entorno virtual
+```shell
+conda create -n bd2_env python=3.10 -y
+```
+
+```shell
+conda activate bd2_env
+```
+
+2. Levantar API backend
 
 ```shell
 cd backend
@@ -13,9 +22,9 @@ Desplegar API local
 uvicorn api.main:app --reload
 ```
 
-2. Levantar ADK
+3. Levantar app
 
 ```shell
-adk web
+   streamlit run app.py
 ```
 

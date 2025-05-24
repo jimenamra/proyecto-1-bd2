@@ -1,36 +1,23 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from core.command_parser import CommandParser
-from core.dispatcher import CommandDispatcher
+from isam_backend import isam, Registro
+from parser_sql import parse_sql
 
-app = FastAPI(title="API Urbana con Índices Inteligentes")
+app = FastAPI()
 
-parser = CommandParser()
-dispatcher = CommandDispatcher()
-
-class InstructionRequest(BaseModel):
-    texto: str
-
-class SQLRequest(BaseModel):
-    query: str
-
-@app.post("/instruccion")
-def procesar_instruccion(req: InstructionRequest):
-    try:
-        comando = parser.parse(req.texto)
-        resultado = dispatcher.execute(comando)
-        return {"resultado": resultado}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.post("/consulta-sql")
-def consulta_sql(req: SQLRequest):
-    try:
-        eventos = dispatcher.execute_sql(req.query)
-        return {"eventos": [e.__dict__ for e in eventos]}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.get("/eventos")
-def listar_eventos():
-    return {"eventos": [e.__dict__ for e in dispatcher.eventos.values()]}
+@app.post("/query/")
+def execute_sql(sql: str):
+    op = parse_sql(sql)
+    if op[0] == "insert":
+        isam.add(Registro(op[1]))
+        return {"message": f"Insertado {op[1]}"}
+    elif op[0] == "search":
+        result = [r.val for r in isam.search(op[1])]
+        return {"result": result}
+    elif op[0] == "range_search":
+        result = [r.val for r in isam.rangeSearch(op[1], op[2])]
+        return {"result": result}
+    elif op[0] == "delete":
+        isam.remove(op[1])
+        return {"message": f"Eliminado {op[1]}"}
+    else:
+        raise HTTPException(status_code=400, detail="Consulta SQL no válida.")
