@@ -59,7 +59,7 @@ class Bucket:
         return bucket
 
 class ISAM:
-    def __init__(self, path, fb):
+    def __init__(self, path='data/registros_isam.dat', fb=3): # por default
         self.path = path
         self.fb = fb
         self.index1 = []  # [(clave, offset)]
@@ -155,6 +155,11 @@ class ISAM:
         return resultados
 
     def add(self, registro):
+        if not self.index1:
+            print("[INFO] Índice vacío, creando índice inicial...")
+            self.build_index([registro])
+            return
+
         offset = self._buscar_offset(registro.val)
         bucket = self._read_bucket(offset)
 
@@ -182,3 +187,23 @@ class ISAM:
             if changed:
                 self._write_bucket(bucket, offset)
             offset = bucket.next
+
+
+    def _reconstruir_indices(self):
+        self.index1 = []
+        self.index2 = []
+
+        offset = 0
+        with open(self.path, 'rb') as f:
+            while True:
+                f.seek(offset)
+                data = f.read(self.bucket_size)
+                if not data or len(data) < self.bucket_size:
+                    break
+                bucket = Bucket.desempaquetar(data, self.fb)
+                if bucket.size > 0 and bucket.registros[0]:
+                    self.index1.append((bucket.registros[0].val, offset))
+                offset += self.bucket_size
+
+        for i in range(0, len(self.index1), 2):
+            self.index2.append((self.index1[i][0], i))

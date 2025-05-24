@@ -19,10 +19,14 @@ cd backend
 Desplegar API local
 
 ```shell
-uvicorn api.main:app --reload
+uvicorn backend.main:app --reload
 ```
 
 3. Levantar app
+
+```shell
+cd frontend
+```
 
 ```shell
    streamlit run app.py

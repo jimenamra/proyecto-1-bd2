@@ -1,18 +1,30 @@
-import re
+from ISAM.isam import ISAM
 
-def parse_sql(sql: str):
+def execute_sql(sql: str):
+    isam = ISAM()
     sql = sql.strip().lower()
+
     if sql.startswith("insert into"):
-        val = int(re.search(r'values\s*\((\d+)\)', sql).group(1))
-        return ("insert", val)
-    elif sql.startswith("select") and "between" in sql:
-        nums = list(map(int, re.findall(r'\d+', sql)))
-        return ("range_search", nums[0], nums[1])
-    elif sql.startswith("select"):
-        key = int(re.search(r'where\s+\w+\s*=\s*(\d+)', sql).group(1))
-        return ("search", key)
-    elif sql.startswith("delete"):
-        key = int(re.search(r'where\s+\w+\s*=\s*(\d+)', sql).group(1))
-        return ("delete", key)
+        num = int(sql.split("values")[1].strip(" ();"))
+        isam.insert(num)
+        return f"Insertado {num}"
+
+    elif sql.startswith("select * from"):
+        if "where" in sql:
+            cond = sql.split("where")[1].strip()
+            if "between" in cond:
+                a, b = map(int, cond.replace("key", "").replace("between", "").split("and"))
+                return isam.range_search(a, b)
+            else:
+                k = int(cond.split("=")[1])
+                return isam.search(k)
+        else:
+            return "Consulta inválida: falta condición WHERE"
+
+    elif sql.startswith("delete from"):
+        k = int(sql.split("where")[1].split("=")[1])
+        isam.delete(k)
+        return f"Eliminado {k}"
+
     else:
-        return ("unknown",)
+        return "SQL inválido"
