@@ -1,6 +1,6 @@
 # Proyecto 1 de BD2
 
-Sistema de hallazgos 
+Gestor de base de datos personalizado
 
 1. Activar entorno virtual
 ```shell
@@ -25,10 +25,6 @@ uvicorn backend.main:app --reload
 3. Levantar app
 
 ```shell
-cd frontend
-```
-
-```shell
-   streamlit run app.py
+streamlit run frontend/app.py
 ```
 

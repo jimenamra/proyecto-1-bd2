@@ -1,30 +1,48 @@
-from ISAM.isam import ISAM
+import re
 
-def execute_sql(sql: str):
-    isam = ISAM()
-    sql = sql.strip().lower()
+def parse_sql(sql: str):
+    sql = sql.strip()
 
-    if sql.startswith("insert into"):
-        num = int(sql.split("values")[1].strip(" ();"))
-        isam.insert(num)
-        return f"Insertado {num}"
+    if sql.lower().startswith("insert into"):
+        match = re.search(r'values\s*\(\s*(\d+)\s*\)', sql, re.IGNORECASE)
+        if match:
+            return ("insert", int(match.group(1)))
 
-    elif sql.startswith("select * from"):
-        if "where" in sql:
-            cond = sql.split("where")[1].strip()
-            if "between" in cond:
-                a, b = map(int, cond.replace("key", "").replace("between", "").split("and"))
-                return isam.range_search(a, b)
-            else:
-                k = int(cond.split("=")[1])
-                return isam.search(k)
-        else:
-            return "Consulta inválida: falta condición WHERE"
+    elif sql.lower().startswith("select") and "between" in sql.lower():
+        match = re.search(r'between\s+(\d+)\s+and\s+(\d+)', sql, re.IGNORECASE)
+        if match:
+            return ("range_search", int(match.group(1)), int(match.group(2)))
 
-    elif sql.startswith("delete from"):
-        k = int(sql.split("where")[1].split("=")[1])
-        isam.delete(k)
-        return f"Eliminado {k}"
+    elif sql.lower().startswith("select"):
+        # Soporte para strings entre comillas o números
+        match = re.search(r'where\s+(\w+)\s*=\s*(?:[\'"])?(.+?)(?:[\'"])?\s*$', sql, re.IGNORECASE)
+        if match:
+            field = match.group(1)
+            value = match.group(2)
+            return ("search", field, value)
 
-    else:
-        return "SQL inválido"
+    elif sql.lower().startswith("delete"):
+        match = re.search(r'where\s+\w+\s*=\s*(\d+)', sql, re.IGNORECASE)
+        if match:
+            return ("delete", int(match.group(1)))
+
+    elif sql.lower().startswith("create table") and "from file" in sql.lower():
+        # Caso completo: con índice
+        match_full = re.search(
+            r'create table (\w+)\s+from file\s+[\'"](.+?)[\'"]\s+using index\s+(\w+)\s*\(\s*[\'"]?(\w+)[\'"]?\s*\)',
+            sql,
+            re.IGNORECASE
+        )
+        if match_full:
+            return ("create_from_file", match_full.group(1), match_full.group(2), match_full.group(3).lower(), match_full.group(4))
+
+        # Caso simple: sin índice
+        match_simple = re.search(
+            r'create table (\w+)\s+from file\s+[\'"](.+?)[\'"]',
+            sql,
+            re.IGNORECASE
+        )
+        if match_simple:
+            return ("load_file_only", match_simple.group(1), match_simple.group(2))
+
+    return ("unknown",)
