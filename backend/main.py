@@ -1,15 +1,26 @@
 from fastapi import FastAPI, Query, UploadFile, File, HTTPException
-from pydantic import BaseModel
 from ISAM.isam import Registro,ISAM
+from ISAM.btree import BTree
 from .sql_parser import parse_sql
+from pydantic import BaseModel
 import pandas as pd
 import os
 
 app = FastAPI()
 isam = ISAM()
+btree = BTree()
 
-class InsertRequest(BaseModel):
-    value: int
+class RegistroRequest(BaseModel):
+    id: int
+    fecha: str
+    tipo: str
+    lat: float
+    lon: float
+    mag: float
+    prof: float
+
+# class InsertRequest(BaseModel):
+#     value: int
 
 @app.get("/search/{key}")
 def search(key: int):
@@ -20,10 +31,30 @@ def range_search(a: int, b: int):
     return {"result": isam.rangeSearch(a, b)}
 
 @app.post("/insert")
-def insert(data: InsertRequest):
-    reg = Registro(data.value)
-    isam.add(reg)
-    return {"message": f"Insertado {data.value}"}
+def insert(payload: dict):
+    #reg = Registro(data.value)
+    #isam.add(reg)
+    #return {"message": f"Insertado {data.value}"}
+    try:
+        r = Registro(
+            payload["id"],
+            payload["fecha"],
+            payload["tipo"],
+            float(payload["lat"]),
+            float(payload["lon"]),
+            float(payload["mag"]),
+            float(payload["prof"])
+        )
+
+        isam.add(r)
+        #btree.add(r)
+        #rtree.insert(r.lon, r.lat, r)  # usando lon/lat como bounding box
+
+        return {"message": f"Desastre '{r.id}' registrado."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @app.delete("/delete/{key}")
 def delete(key: int):

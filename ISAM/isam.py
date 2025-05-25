@@ -1,20 +1,59 @@
 import os
 import struct
 
+# class Registro:
+#     FORMAT = 'i'
+#     SIZE = struct.calcsize(FORMAT)
+
+#     def __init__(self, val):
+#         self.val = val
+
+#     def empaquetar(self):
+#         return struct.pack(self.FORMAT, self.val)
+
+#     @staticmethod
+#     def desempaquetar(data):
+#         val = struct.unpack(Registro.FORMAT, data)[0]
+#         return Registro(val)
+
 class Registro:
-    FORMAT = 'i'
+    FORMAT = 'i10s10sffff'  # id, fecha, tipo, lat, lon, mag, prof
     SIZE = struct.calcsize(FORMAT)
 
-    def __init__(self, val):
-        self.val = val
+    def __init__(self, id, fecha, tipo, lat, lon, mag, prof):
+        self.id = id
+        self.fecha = fecha
+        self.tipo = tipo
+        self.lat = lat
+        self.lon = lon
+        self.mag = mag
+        self.prof = prof
 
     def empaquetar(self):
-        return struct.pack(self.FORMAT, self.val)
+        return struct.pack(
+            self.FORMAT,
+            self.id,
+            self.fecha.encode('utf-8'),
+            self.tipo.encode('utf-8'),
+            self.lat,
+            self.lon,
+            self.mag,
+            self.prof
+        )
 
     @staticmethod
     def desempaquetar(data):
-        val = struct.unpack(Registro.FORMAT, data)[0]
-        return Registro(val)
+        unpacked = struct.unpack(Registro.FORMAT, data)
+        return Registro(
+            unpacked[0],
+            unpacked[1].decode('utf-8').strip('\x00'),
+            unpacked[2].decode('utf-8').strip('\x00'),
+            unpacked[3],
+            unpacked[4],
+            unpacked[5],
+            unpacked[6]
+        )
+    
 
 class Bucket:
     def __init__(self, fb):
@@ -36,11 +75,15 @@ class Bucket:
     def empaquetar(self):
         data = struct.pack('i', self.size)
         data += struct.pack('i', self.next)
+        registro_vacio = struct.pack(
+            Registro.FORMAT,
+            -1, b'', b'', -1.0, -1.0, -1.0, -1.0
+        )
         for i in range(self.fb):
             if i < self.size and self.registros[i]:
                 data += self.registros[i].empaquetar()
             else:
-                data += struct.pack(Registro.FORMAT, -1)
+                data += registro_vacio
         return data
 
     @staticmethod
@@ -65,7 +108,7 @@ class ISAM:
         self.index1 = []  # [(clave, offset)]
         self.index2 = []  # [(clave, pos en index1)]
         self.bucket_size = 8 + fb * Registro.SIZE
-
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         if not os.path.exists(path):
             open(path, 'wb').close()
 
@@ -86,22 +129,17 @@ class ISAM:
             f.write(bucket.empaquetar())
             return offset
 
-    def _reset_file(self):
-        open(self.path, 'wb').close()
-
     def build_index(self, registros):
-        registros.sort(key=lambda r: r.val)
+        registros.sort(key=lambda r: r.id)
         self.index1.clear()
         self.index2.clear()
-        self._reset_file()
-
+        open(self.path, 'wb').close()
         for i in range(0, len(registros), self.fb):
             bloque = Bucket(self.fb)
             for r in registros[i:i + self.fb]:
                 bloque.insert(r)
             offset = self._append_bucket(bloque)
-            self.index1.append((bloque.registros[0].val, offset))
-
+            self.index1.append((bloque.registros[0].id, offset))
         for i in range(0, len(self.index1), 2):
             self.index2.append((self.index1[i][0], i))
 
@@ -124,11 +162,11 @@ class ISAM:
         while offset != -1:
             bucket = self._read_bucket(offset)
             for r in bucket.registros:
-                if r and r.val == key:
+                if r and r.id == key:
                     res.append(r)
             offset = bucket.next
         return res
-
+    
     def rangeSearch(self, begin, end):
         resultados = []
 
@@ -146,9 +184,9 @@ class ISAM:
             while offset != -1:
                 bucket = self._read_bucket(offset)
                 for r in bucket.registros:
-                    if r and begin <= r.val <= end:
+                    if r and begin <= r.id <= end:
                         resultados.append(r)
-                    elif r and r.val > end:
+                    elif r and r.id > end:
                         return resultados  # Ya pasamos el rango
                 offset = bucket.next
 
@@ -156,13 +194,10 @@ class ISAM:
 
     def add(self, registro):
         if not self.index1:
-            print("[INFO] Índice vacío, creando índice inicial...")
             self.build_index([registro])
             return
-
-        offset = self._buscar_offset(registro.val)
+        offset = self._buscar_offset(registro.id)
         bucket = self._read_bucket(offset)
-
         while bucket.isFull():
             if bucket.next == -1:
                 new_bucket = Bucket(self.fb)
@@ -171,39 +206,5 @@ class ISAM:
                 self._write_bucket(bucket, offset)
             offset = bucket.next
             bucket = self._read_bucket(offset)
-
         bucket.insert(registro)
         self._write_bucket(bucket, offset)
-
-    def remove(self, key):
-        offset = self._buscar_offset(key)
-        while offset != -1:
-            bucket = self._read_bucket(offset)
-            changed = False
-            for i in range(bucket.size):
-                if bucket.registros[i] and bucket.registros[i].val == key:
-                    bucket.registros[i] = None
-                    changed = True
-            if changed:
-                self._write_bucket(bucket, offset)
-            offset = bucket.next
-
-
-    def _reconstruir_indices(self):
-        self.index1 = []
-        self.index2 = []
-
-        offset = 0
-        with open(self.path, 'rb') as f:
-            while True:
-                f.seek(offset)
-                data = f.read(self.bucket_size)
-                if not data or len(data) < self.bucket_size:
-                    break
-                bucket = Bucket.desempaquetar(data, self.fb)
-                if bucket.size > 0 and bucket.registros[0]:
-                    self.index1.append((bucket.registros[0].val, offset))
-                offset += self.bucket_size
-
-        for i in range(0, len(self.index1), 2):
-            self.index2.append((self.index1[i][0], i))
