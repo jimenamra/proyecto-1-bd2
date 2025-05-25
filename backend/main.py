@@ -2,13 +2,19 @@ from fastapi import FastAPI, Query, UploadFile, File, HTTPException
 from ISAM.isam import Registro,ISAM
 from ISAM.btree import BTree
 from .sql_parser import parse_sql
+from .rtree import RTreeIndex
+from typing import List
 from pydantic import BaseModel
 import pandas as pd
 import os
+import json
+from time import time
 
 app = FastAPI()
 isam = ISAM()
 btree = BTree()
+#rtree = RTreeIndex()
+timing_log = []  # metricas
 
 class RegistroRequest(BaseModel):
     id: int
@@ -24,42 +30,140 @@ class RegistroRequest(BaseModel):
 
 @app.get("/search/{key}")
 def search(key: int):
-    return {"result": isam.search(key)}
+    response = []
+
+    # ISAM
+    t0 = time()
+    isam_result = isam.search(key)
+    t1 = time()
+    response.append({
+        "metodo": "ISAM",
+        "tiempo": round(t1 - t0, 6),
+        "resultados": [r.__dict__ for r in isam_result]
+    })
+
+    # B+ Tree
+    t0 = time()
+    btree_result = btree.search(key)
+    t1 = time()
+    response.append({
+        "metodo": "BTree",
+        "tiempo": round(t1 - t0, 6),
+        "resultados": btree_result.__dict__ if btree_result else []
+    })
+
+    # # RTree (comentado)
+    # t0 = time()
+    # rtree_result = rtree.search_by_id(key)
+    # t1 = time()
+    # response.append({
+    #     "metodo": "RTree",
+    #     "tiempo": round(t1 - t0, 6),
+    #     "resultados": rtree_result
+    # })
+
+    return response
 
 @app.get("/range/{a}/{b}")
 def range_search(a: int, b: int):
-    return {"result": isam.rangeSearch(a, b)}
+    response = []
+
+    # ISAM
+    t0 = time()
+    isam_result = isam.rangeSearch(a, b)
+    t1 = time()
+    response.append({
+        "metodo": "ISAM",
+        "tiempo": round(t1 - t0, 6),
+        "resultados": [r.__dict__ for r in isam_result]
+    })
+
+    # B+ Tree
+    t0 = time()
+    btree_result = btree.range_search(a, b)
+    t1 = time()
+    response.append({
+        "metodo": "BTree",
+        "tiempo": round(t1 - t0, 6),
+        "resultados": [r.__dict__ for r in btree_result]
+    })
+
+    # # RTree (comentado)
+    # t0 = time()
+    # rtree_result = rtree.range_search_area(a, b)
+    # t1 = time()
+    # response.append({
+    #     "metodo": "RTree",
+    #     "tiempo": round(t1 - t0, 6),
+    #     "resultados": rtree_result
+    # })
+
+    return response
 
 @app.post("/insert")
-def insert(payload: dict):
-    #reg = Registro(data.value)
-    #isam.add(reg)
-    #return {"message": f"Insertado {data.value}"}
-    try:
-        r = Registro(
-            payload["id"],
-            payload["fecha"],
-            payload["tipo"],
-            float(payload["lat"]),
-            float(payload["lon"]),
-            float(payload["mag"]),
-            float(payload["prof"])
-        )
+def insert(req: RegistroRequest):
+    response = []
+    r = Registro(req.id, req.fecha, req.tipo, req.lat, req.lon, req.mag, req.prof)
 
-        isam.add(r)
-        #btree.add(r)
-        #rtree.insert(r.lon, r.lat, r)  # usando lon/lat como bounding box
+    t0 = time()
+    isam.add(r)
+    t1 = time()
+    response.append({
+        "metodo": "ISAM",
+        "tiempo": round(t1 - t0, 6),
+        "resultado": f"ID {r.id} insertado"
+    })
 
-        return {"message": f"Desastre '{r.id}' registrado."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    t0 = time()
+    btree.add(r)
+    t1 = time()
+    response.append({
+        "metodo": "BTree",
+        "tiempo": round(t1 - t0, 6),
+        "resultado": f"ID {r.id} insertado"
+    })
+
+    # # RTree (comentado)
+    # t0 = time()
+    # rtree.add({
+    #     "id": r.id,
+    #     "lat": r.lat,
+    #     "lon": r.lon,
+    #     "descripcion": r.tipo
+    # })
+    # t1 = time()
+    # response.append({
+    #     "metodo": "RTree",
+    #     "tiempo": round(t1 - t0, 6),
+    #     "resultado": f"ID {r.id} insertado"
+    # })
+
+    return response
 
 
 
-@app.delete("/delete/{key}")
-def delete(key: int):
-    isam.remove(key)
-    return {"message": f"Eliminado {key}"}
+@app.delete("/delete/{id}")
+def delete(id: int):
+    response = []
+
+    t0 = time()
+    isam.remove(id)
+    t1 = time()
+    response.append({
+        "metodo": "ISAM",
+        "tiempo": round(t1 - t0, 6),
+        "resultado": f"ID {id} eliminado"
+    })
+
+    t0 = time()
+    btree.remove(id)
+    t1 = time()
+    response.append({
+        "metodo": "BTree",
+        "tiempo": round(t1 - t0, 6),
+        "resultado": f"ID {id} eliminado"
+    })
+
 
 @app.post("/sql")
 def run_sql(sql: str):
@@ -135,3 +239,10 @@ async def upload_csv(file: UploadFile = File(...)):
         f.write(content)
 
     return {"message": f"Archivo '{file.filename}' guardado en /data."}
+
+
+@app.get("/metrics/export")
+def export_metrics():
+    with open("data/timings.json", "w") as f:
+        json.dump(timing_log, f, indent=2)
+    return {"message": "Métricas guardadas en data/timings.json"}

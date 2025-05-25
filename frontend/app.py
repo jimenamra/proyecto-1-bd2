@@ -35,7 +35,7 @@ with tabs[0]:
         }
         r = requests.post(f"{backend}/insert", json=payload)
         if r.status_code == 200:
-            st.success(r.json()["message"])
+            st.success(r.json())
         else:
             st.error(f"Error: {r.text}")
 
@@ -80,7 +80,7 @@ with tabs[3]:
     delkey = st.number_input("Clave a eliminar", step=1, key="delete_key")
     if st.button("Eliminar", key="btn_delete"):
         r = requests.delete(f"{backend}/delete/{delkey}")
-        st.success(r.json()['message'])
+        st.success(r.json())
 
 # ========== 🧠 TAB: SQL PARSER ==========
 with tabs[4]:
