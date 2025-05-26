@@ -9,11 +9,14 @@ class AVLRecord:
     left: int
     right: int
     height: int
+    offset: int
 
 class AVLFile:
     def __init__(self, filename: str):
         self.filename = filename
-        self.record_struct = struct.Struct("iiii")
+
+        self.record_struct = struct.Struct("iiiii")
+        self.registro_struct = struct.Struct("i10s10sffff")  # para Registro real
         self.pos_root_struct = struct.Struct("i")
 
         if not os.path.exists(self.filename):
@@ -36,7 +39,7 @@ class AVLFile:
     def set_record(self, pos: int, record: AVLRecord):
         with open(self.filename, "r+b") as file:
             file.seek(4 + pos * self.record_struct.size)
-            file.write(self.record_struct.pack(record.id, record.left, record.right, record.height))
+            file.write(self.record_struct.pack(record.id, record.left, record.right, record.height, record.offset))
 
     def get_record(self, pos: int) -> AVLRecord:
         with open(self.filename, "rb") as file:
@@ -46,19 +49,36 @@ class AVLFile:
 
     def append_record(self, record: AVLRecord) -> int:
         with open(self.filename, "ab") as file:
-            file.write(self.record_struct.pack(record.id, record.left, record.right, record.height))
+            file.write(self.record_struct.pack(record.id, record.left, record.right, record.height, record.offset))
         return self.get_num_records() - 1
 
     def get_num_records(self) -> int:
         size = os.path.getsize(self.filename)
         return (size - 4) // self.record_struct.size
 
+    def _save_registro(self, registro) -> int:
+        packed = self.registro_struct.pack(
+            registro.id,
+            registro.fecha.encode('utf-8').ljust(10, b'\x00'),
+            registro.tipo.encode('utf-8').ljust(10, b'\x00'),
+            registro.lat,
+            registro.lon,
+            registro.mag,
+            registro.prof
+        )
+        with open(self.filename, "ab") as f:
+            offset = f.tell()
+            f.write(packed)
+        return offset
+
     def save_root(self):
         with open(self.filename, "r+b") as file:
             file.seek(0)
             file.write(self.pos_root_struct.pack(self.pos_root))
 
-    def insert(self, record: AVLRecord):
+    def insert(self, record):
+        offset = self._save_registro(record)
+        record = AVLRecord(record.id, -1, -1, 0, offset)
         self.pos_root = self._insert(self.pos_root, record)
         self.save_root()
 
@@ -181,3 +201,33 @@ class AVLFile:
         result.append(record.id)
         self.inorder(record.right, result)
         return result
+
+
+    def search(self, key: int) -> Optional[dict]:
+        return self._search(self.pos_root, key)
+
+    def _search(self, pos: int, key: int) -> Optional[dict]:
+        if pos == -1:
+            return None
+        r = self.get_record(pos)
+        if key == r.id:
+            return self._read_registro(r.offset)
+        elif key < r.id:
+            return self._search(r.left, key)
+        else:
+            return self._search(r.right, key)
+
+    def _read_registro(self, offset) -> dict: # para el offset
+        with open(self.filename, "rb") as f:
+            f.seek(offset)
+            data = f.read(self.registro_struct.size)
+            unpacked = self.registro_struct.unpack(data)
+            return {
+                "id": unpacked[0],
+                "fecha": unpacked[1].decode().strip("\x00"),
+                "tipo": unpacked[2].decode().strip("\x00"),
+                "lat": unpacked[3],
+                "lon": unpacked[4],
+                "mag": unpacked[5],
+                "prof": unpacked[6]
+            }

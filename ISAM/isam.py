@@ -1,21 +1,6 @@
 import os
 import struct
 
-# class Registro:
-#     FORMAT = 'i'
-#     SIZE = struct.calcsize(FORMAT)
-
-#     def __init__(self, val):
-#         self.val = val
-
-#     def empaquetar(self):
-#         return struct.pack(self.FORMAT, self.val)
-
-#     @staticmethod
-#     def desempaquetar(data):
-#         val = struct.unpack(Registro.FORMAT, data)[0]
-#         return Registro(val)
-
 class Registro:
     FORMAT = 'i10s10sffff'  # id, fecha, tipo, lat, lon, mag, prof
     SIZE = struct.calcsize(FORMAT)
@@ -53,7 +38,18 @@ class Registro:
             unpacked[5],
             unpacked[6]
         )
-    
+
+    def to_tuple(self):
+        return (
+            self.id,
+            self.fecha.encode('utf-8'),
+            self.tipo.encode('utf-8'),
+            self.lat,
+            self.lon,
+            self.mag,
+            self.prof
+        )
+
 
 class Bucket:
     def __init__(self, fb):
@@ -194,7 +190,12 @@ class ISAM:
 
     def add(self, registro):
         if not self.index1:
-            self.build_index([registro])
+            # crea un bucket inicial con el registro
+            bucket = Bucket(self.fb)
+            bucket.insert(registro)
+            offset = self._append_bucket(bucket)
+            self.index1.append((registro.id, offset))
+            self.index2.append((registro.id, 0))
             return
         offset = self._buscar_offset(registro.id)
         bucket = self._read_bucket(offset)
@@ -208,3 +209,27 @@ class ISAM:
             bucket = self._read_bucket(offset)
         bucket.insert(registro)
         self._write_bucket(bucket, offset)
+
+    def remove(self, key):
+        if not self.index1:
+            return False
+
+        offset = self._buscar_offset(key)
+        eliminado = False
+
+        while offset != -1:
+            bucket = self._read_bucket(offset)
+            modificado = False
+
+            for i in range(bucket.size):
+                if bucket.registros[i] and bucket.registros[i].id == key:
+                    bucket.registros[i] = None
+                    modificado = True
+                    eliminado = True
+
+            if modificado:
+                self._write_bucket(bucket, offset)
+
+            offset = bucket.next
+
+        return eliminado

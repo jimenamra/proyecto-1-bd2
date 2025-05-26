@@ -138,3 +138,21 @@ class BTree:
         else:
             for child in node.children:
                 self.get_leaves(child, leaves)
+
+    def remove(self, key):
+        node = self.root
+
+        while not node.leaf:
+            i = 0
+            while i < len(node.keys) and key >= node.keys[i]:
+                i += 1
+            node = node.children[i]
+
+        for i, k in enumerate(node.keys):
+            if k == key:
+                node.keys.pop(i)
+                node.offsets.pop(i)
+                self.save_idx()
+                return True
+
+        return False

@@ -11,8 +11,8 @@ MAX_FILL = 10  # Capacidad máxima de cada bucket
 
 class ExtendibleHashing(Generic[TK, RecordType]):
     def __init__(self, filename: str, record_struct: struct.Struct):
-        self.index_filename = f"indx_{filename}"
-        self.data_filename = filename
+        self.index_filename = f"data/indx_{filename}"
+        self.data_filename = f"data/{filename}"
         self.record_struct = record_struct
 
         # Crear archivo de datos si no existe
@@ -52,6 +52,23 @@ class ExtendibleHashing(Generic[TK, RecordType]):
                     return type('DynamicRecord', (), {'id': data[0], 'to_tuple': lambda self: data})()
         return None
 
+    # def remove(self, key: int) -> bool:
+    #     found = False
+    #     with open(self.data_filename, 'r+b') as f:
+    #         pos = 0
+    #         while chunk := f.read(self.record_struct.size):
+    #             data = self.record_struct.unpack(chunk)
+    #             if data[0] == key:
+    #                 f.seek(pos)
+    #                 f.write(self.record_struct.pack(*([0] * len(data))))
+    #                 found = True
+    #                 print(f"Registro con código {key} eliminado.")
+    #                 break
+    #             pos += self.record_struct.size
+    #     if not found:
+    #         print(f"Registro con código {key} no encontrado.")
+    #     return found
+
     def remove(self, key: int) -> bool:
         found = False
         with open(self.data_filename, 'r+b') as f:
@@ -60,7 +77,13 @@ class ExtendibleHashing(Generic[TK, RecordType]):
                 data = self.record_struct.unpack(chunk)
                 if data[0] == key:
                     f.seek(pos)
-                    f.write(self.record_struct.pack(*([0] * len(data))))
+                    blank = (
+                        0,                     # int
+                        b''.ljust(10, b'\x00'),  # 10s
+                        b''.ljust(10, b'\x00'),  # 10s
+                        -1.0, -1.0, -1.0, -1.0  # floats
+                    )
+                    f.write(self.record_struct.pack(*blank))
                     found = True
                     print(f"Registro con código {key} eliminado.")
                     break
@@ -68,6 +91,7 @@ class ExtendibleHashing(Generic[TK, RecordType]):
         if not found:
             print(f"Registro con código {key} no encontrado.")
         return found
+
 
     def find_range(self, lower: int, upper: int) -> List[RecordType]:
         results = []

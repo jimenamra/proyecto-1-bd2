@@ -3,46 +3,32 @@ import re
 def parse_sql(sql: str):
     sql = sql.strip()
 
-    if sql.lower().startswith("insert into"):
-        match = re.search(r'values\s*\(\s*(\d+)\s*\)', sql, re.IGNORECASE)
-        if match:
-            return ("insert", int(match.group(1)))
-
-    elif sql.lower().startswith("select") and "between" in sql.lower():
-        match = re.search(r'between\s+(\d+)\s+and\s+(\d+)', sql, re.IGNORECASE)
-        if match:
-            return ("range_search", int(match.group(1)), int(match.group(2)))
-
-    elif sql.lower().startswith("select"):
-        # Soporte para strings entre comillas o números
-        match = re.search(r'where\s+(\w+)\s*=\s*(?:[\'"])?(.+?)(?:[\'"])?\s*$', sql, re.IGNORECASE)
-        if match:
-            field = match.group(1)
-            value = match.group(2)
-            return ("search", field, value)
-
-    elif sql.lower().startswith("delete"):
-        match = re.search(r'where\s+\w+\s*=\s*(\d+)', sql, re.IGNORECASE)
-        if match:
-            return ("delete", int(match.group(1)))
-
-    elif sql.lower().startswith("create table") and "from file" in sql.lower():
-        # Caso completo: con índice
-        match_full = re.search(
+    if sql.lower().startswith("create table"):
+        match = re.search(
             r'create table (\w+)\s+from file\s+[\'"](.+?)[\'"]\s+using index\s+(\w+)\s*\(\s*[\'"]?(\w+)[\'"]?\s*\)',
-            sql,
-            re.IGNORECASE
-        )
-        if match_full:
-            return ("create_from_file", match_full.group(1), match_full.group(2), match_full.group(3).lower(), match_full.group(4))
+            sql, re.IGNORECASE)
+        if match:
+            return ("create", match.group(1), match.group(2), match.group(3).lower(), match.group(4))
 
-        # Caso simple: sin índice
-        match_simple = re.search(
-            r'create table (\w+)\s+from file\s+[\'"](.+?)[\'"]',
-            sql,
-            re.IGNORECASE
-        )
-        if match_simple:
-            return ("load_file_only", match_simple.group(1), match_simple.group(2))
+    if "between" in sql.lower():
+        match = re.search(r'where\s+(\w+)\s+between\s+([\d\.-]+)\s+and\s+([\d\.-]+)', sql, re.IGNORECASE)
+        if match:
+            return ("range", match.group(1), float(match.group(2)), float(match.group(3)))
+
+    if sql.lower().startswith("select"):
+        match = re.search(r'where\s+(\w+)\s*=\s*([\d\.-]+)', sql, re.IGNORECASE)
+        if match:
+            return ("search", match.group(1), float(match.group(2)))
+
+    if sql.lower().startswith("insert into"):
+        match = re.search(r'values\s*\((.+)\)', sql, re.IGNORECASE)
+        if match:
+            campos = [x.strip().strip("'").strip('"') for x in match.group(1).split(',')]
+            return ("insert", campos)
+
+    if sql.lower().startswith("delete"):
+        match = re.search(r'where\s+(\w+)\s*=\s*([\d\.-]+)', sql, re.IGNORECASE)
+        if match:
+            return ("delete", match.group(1), float(match.group(2)))
 
     return ("unknown",)

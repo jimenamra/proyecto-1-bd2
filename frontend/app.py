@@ -6,7 +6,7 @@ st.set_page_config(page_title="MultiDB Manager", page_icon="💾")
 st.title("💾 MultiDB Manager")
 backend = "http://localhost:8000"
 
-tabs = st.tabs(["📥 Agregar", "📁 Subir Archivo", "🔎 Buscar", "❌ Eliminar", "🧠 SQL Parser"])
+tabs = st.tabs(["📥 Agregar","🔎 Buscar", "❌ Eliminar", "🧠 SQL Parser"])
 
 # ========== 📥 TAB: AGREGAR ==========
 with tabs[0]:
@@ -35,29 +35,12 @@ with tabs[0]:
         }
         r = requests.post(f"{backend}/insert", json=payload)
         if r.status_code == 200:
-            st.success(r.json())
+            st.json(r.json())
         else:
             st.error(f"Error: {r.text}")
 
-# ========== 📁 TAB: CARGAR ARCHIVO ==========
-with tabs[1]:
-    st.subheader("📁 Cargar archivo CSV")
-    uploaded_file = st.file_uploader("Selecciona un archivo CSV", type=["csv"])
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        st.write("Vista previa del archivo:")
-        st.dataframe(df.head())
-
-        if st.button("Cargar y guardar CSV en backend", key="btn_csv_upload"):
-            files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
-            response = requests.post(f"{backend}/upload_csv", files=files)
-            if response.status_code == 200:
-                st.success("Archivo guardado exitosamente en el backend.")
-            else:
-                st.error("Error al guardar el archivo en el backend.")
-
 # ========== 🔎 TAB: BUSCAR ==========
-with tabs[2]:
+with tabs[1]:
     st.subheader("🔑 Búsqueda Exacta")
     key = st.number_input("ID del desastre a buscar", step=1, format="%d")
     if st.button("Buscar ID", key="btn_exact"):
@@ -75,15 +58,30 @@ with tabs[2]:
         st.json(r.json())
 
 # ========== ❌ TAB: ELIMINAR ==========
-with tabs[3]:
+with tabs[2]:
     st.subheader("Eliminar registro")
     delkey = st.number_input("Clave a eliminar", step=1, key="delete_key")
     if st.button("Eliminar", key="btn_delete"):
         r = requests.delete(f"{backend}/delete/{delkey}")
-        st.success(r.json())
+        st.json(r.json())
 
 # ========== 🧠 TAB: SQL PARSER ==========
-with tabs[4]:
+with tabs[3]:
+    st.subheader("📁 Cargar archivo CSV")
+    uploaded_file = st.file_uploader("Selecciona un archivo CSV", type=["csv"])
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        st.write("Vista previa del archivo:")
+        st.dataframe(df.head())
+
+        if st.button("Cargar y guardar CSV", key="btn_csv_upload"):
+            files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
+            response = requests.post(f"{backend}/upload_csv", files=files)
+            if response.status_code == 200:
+                st.success("Archivo guardado exitosamente en el backend.")
+            else:
+                st.error("Error al guardar el archivo en el backend.")
+
     st.subheader("Ejecutar comando SQL")
     sql = st.text_area("Escribe una sentencia SQL")
     if st.button("Ejecutar SQL", key="btn_sql"):
