@@ -18,18 +18,15 @@ app = FastAPI()
 isam = ISAM()
 btree = BTree()
 avl = AVLFile("data/avl_index.dat") 
-#rtree = RTreeIndex("data/rtree_index.dat")
-
-# Estado global para la lógica del parser
-tabla_activa = None
-indice_activo = None
-columna_indice = None
-tipo_columna = None  # "int" o "float"
-
-
+rtree = RTreeIndex()
 record_struct = struct.Struct('i10s10sffff')
 ext_hash = ExtendibleHashing("ext_hash.dat", record_struct)
 
+# estado para logica de parser
+tabla_activa = None
+indice_activo = None
+columna_indice = None
+tipo_columna = None  # int/float
 
 timing_log = []  # metricas
 
@@ -42,8 +39,6 @@ class RegistroRequest(BaseModel):
     mag: float
     prof: float
 
-# class InsertRequest(BaseModel):
-#     value: int
 
 @app.get("/search/{key}")
 def search(key: int):
@@ -88,14 +83,14 @@ def search(key: int):
     })
 
     # # RTree (comentado)
-    # t0 = time()
-    # rtree_result = rtree.search_by_id(key)
-    # t1 = time()
-    # response.append({
-    #     "metodo": "RTree",
-    #     "tiempo": round(t1 - t0, 6),
-    #     "resultados": rtree_result
-    # })
+    t0 = time()
+    rtree_result = rtree.search_by_id(key)
+    t1 = time()
+    response.append({
+        "metodo": "RTree",
+        "tiempo": round(t1 - t0, 6),
+        "resultados": rtree_result
+    })
 
     return response
 
@@ -131,16 +126,24 @@ def range_search(a: int, b: int):
         "tiempo": round(t1 - t0, 6),
         "resultados": [r.to_tuple() for r in hash_result]
     })
+    return response
 
-    # # RTree (comentado)
-    # t0 = time()
-    # rtree_result = rtree.range_search_area(a, b)
-    # t1 = time()
-    # response.append({
-    #     "metodo": "RTree",
-    #     "tiempo": round(t1 - t0, 6),
-    #     "resultados": rtree_result
-    # })
+@app.get("/range_area/{a}/{b}")
+def range_search_area(a: float, b: float):
+    
+    if not (-90 <= a <= 90 and -180 <= b <= 180):
+        raise HTTPException(status_code=400, detail="Coordenadas fuera de rango")
+
+    # RTree 
+    response = []
+    t0 = time()
+    rtree_result = rtree.rangeSearch(a, b)
+    t1 = time()
+    response.append({
+        "metodo": "RTree",
+        "tiempo": round(t1 - t0, 6),
+        "resultados": rtree_result
+    })
 
     return response
 
@@ -186,19 +189,24 @@ def insert(req: RegistroRequest):
     })
 
     # # RTree (comentado)
-    # t0 = time()
-    # rtree.add({
-    #     "id": r.id,
-    #     "lat": r.lat,
-    #     "lon": r.lon,
-    #     "descripcion": r.tipo
-    # })
-    # t1 = time()
-    # response.append({
-    #     "metodo": "RTree",
-    #     "tiempo": round(t1 - t0, 6),
-    #     "resultado": f"ID {r.id} insertado"
-    # })
+    t0 = time()
+    rtree.insert(
+        record_id=r.id,
+        lat=r.lat,
+        lon=r.lon,
+        record_data={
+            "fecha": r.fecha,
+            "tipo": r.tipo,
+            "mag": r.mag,
+            "prof": r.prof
+        }
+    )
+    t1 = time()
+    response.append({
+        "metodo": "RTree",
+        "tiempo": round(t1 - t0, 6),
+        "resultado": f"ID {r.id} insertado"
+    })
 
     return response
 
@@ -241,6 +249,15 @@ def delete(id: int):
     t1 = time()
     response.append({
         "metodo": "Hashing",
+        "tiempo": round(t1 - t0, 6),
+        "resultado": f"ID {id} eliminado"
+    })
+
+    t0 = time()
+    rtree.remove(id)
+    t1 = time()
+    response.append({
+        "metodo": "RTree",
         "tiempo": round(t1 - t0, 6),
         "resultado": f"ID {id} eliminado"
     })
@@ -338,7 +355,7 @@ def run_sql(sql: str = Query(...)):
         elif indice_activo == "hash":
             return {"result": [r.to_tuple() for r in ext_hash.find_range(int(a), int(b))]}
         # elif indice_activo == "rtree":
-        #     return {"result": rtree.range_search_box(a, a, b, b)}
+        #     return {"result": rtree.rangeSearch(a, a, b, b)}
 
     # INSERT
     if op[0] == "insert":
@@ -361,7 +378,17 @@ def run_sql(sql: str = Query(...)):
         elif indice_activo == "hash":
             ext_hash.insert(r)
         # elif indice_activo == "rtree":
-        #     rtree.add({...})
+            # rtree.insert(
+            #     record_id=r.id,
+            #     lat=r.lat,
+            #     lon=r.lon,
+            #     record_data={
+            #         "fecha": r.fecha,
+            #         "tipo": r.tipo,
+            #         "mag": r.mag,
+            #         "prof": r.prof
+            #     }
+            # )
         return {"message": f"Insertado ID {r.id}"}
 
     # DELETE
