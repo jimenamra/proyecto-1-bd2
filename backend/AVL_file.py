@@ -13,6 +13,7 @@ class AVLRecord:
 
 class AVLFile:
     def __init__(self, filename: str):
+        
         self.filename = filename
 
         self.record_struct = struct.Struct("iiiii")
@@ -231,3 +232,22 @@ class AVLFile:
                 "mag": unpacked[5],
                 "prof": unpacked[6]
             }
+
+    def range_search(self, min_id: int, max_id: int) -> list[dict]:
+        result = []
+        self._range_search(self.pos_root, min_id, max_id, result)
+        return result
+
+    def _range_search(self, pos: int, min_id: int, max_id: int, result: list):
+        if pos == -1:
+            return
+
+        record = self.get_record(pos)
+        if min_id < record.id:
+            self._range_search(record.left, min_id, max_id, result)
+
+        if min_id <= record.id <= max_id:
+            result.append(self._read_registro(record.offset))
+
+        if record.id < max_id:
+            self._range_search(record.right, min_id, max_id, result)

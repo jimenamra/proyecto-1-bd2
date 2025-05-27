@@ -115,16 +115,16 @@ def range_search(a: int, b: int):
     response.append({
         "metodo": "BTree",
         "tiempo": round(t1 - t0, 6),
-        "resultados": [r.__dict__ for r in btree_result]
+        "resultados": btree_result
     })
 
     t0 = time()
-    hash_result = ext_hash.find_range(a, b)
+    avl_result = avl.range_search(a, b)
     t1 = time()
     response.append({
-        "metodo": "Hashing",
+        "metodo": "AVL",
         "tiempo": round(t1 - t0, 6),
-        "resultados": [r.to_tuple() for r in hash_result]
+        "resultados": avl_result
     })
     return response
 
@@ -272,58 +272,36 @@ def run_sql(sql: str = Query(...)):
 
     op = parse_sql(sql)
 
-    # CREATE
+    #CREATE TABLE 
     if op[0] == "create":
-        tabla_activa, path, indice_activo, columna_indice = op[1:]
+        tabla_activa = op[1]
+        campos = op[2]
 
-        if indice_activo not in ["isam", "btree", "avl", "hash", "rtree"]:
+        indexed_fields = [f for f in campos if "index" in f]
+        if not indexed_fields:
+            raise HTTPException(400, detail="Debe definir al menos un campo con INDEX.")
+
+        campo_idx = indexed_fields[0]
+        columna_indice = campo_idx["name"]
+        indice_activo = campo_idx["index"].lower()
+        tipo_columna = campo_idx["type"].lower()
+
+        if indice_activo not in ["isam", "btree", "avl", "hash", "rtree", "seq"]:
             raise HTTPException(400, detail=f"Índice no válido: {indice_activo}")
 
-        registros = []
-        with open(path, newline='') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                registros.append(Registro(
-                    int(row["id"]),
-                    row["fecha"],
-                    row["tipo"],
-                    float(row["lat"]),
-                    float(row["lon"]),
-                    float(row["mag"]),
-                    float(row["prof"])
-                ))
+        return {
+            "message": f"Tabla '{tabla_activa}' creada.",
+            "estructura": campos,
+            "indexado_por": columna_indice,
+            "tipo_indice": indice_activo,
+            "tipo_columna": tipo_columna
+        }
 
-        if indice_activo == "rtree":
-            if columna_indice not in ["lat", "lon"]:
-                raise HTTPException(400, detail="RTree solo acepta 'lat' o 'lon'")
-            tipo_columna = "float"
-            # for r in registros:
-            #     rtree.add({"id": r.id, "lat": r.lat, "lon": r.lon, "descripcion": r.tipo})
-
-        else:
-            if columna_indice != "id":
-                raise HTTPException(400, detail=f"{indice_activo} solo puede indexar 'id'")
-            tipo_columna = "int"
-
-            if indice_activo == "isam":
-                isam.build_index(registros)
-            elif indice_activo == "btree":
-                for r in registros:
-                    btree.add(r)
-            elif indice_activo == "avl":
-                for r in registros:
-                    avl.insert(r)
-            elif indice_activo == "hash":
-                for r in registros:
-                    ext_hash.insert(r)
-
-        return {"message": f"Tabla '{tabla_activa}' creada con índice {indice_activo} en '{columna_indice}'"}
-
-    # validación obligatoria
+    # --- validación obligatoria ---
     if not tabla_activa:
         raise HTTPException(400, detail="Debe ejecutar CREATE TABLE primero.")
 
-    # SEARCH
+    # --- SEARCH ---
     if op[0] == "search":
         campo, valor = op[1], op[2]
         if campo != columna_indice:
@@ -339,10 +317,10 @@ def run_sql(sql: str = Query(...)):
         elif indice_activo == "hash":
             r = ext_hash.find(int(valor))
             return {"result": r.to_tuple() if r else []}
-        # elif indice_activo == "rtree":
-        #     return {"result": rtree.search_near(columna_indice, valor)}
+        elif indice_activo == "rtree":
+            return {"result": rtree.search_by_id(int(valor))}
 
-    # RANGE
+    # --- RANGE ---
     if op[0] == "range":
         campo, a, b = op[1], op[2], op[3]
         if campo != columna_indice:
@@ -354,10 +332,12 @@ def run_sql(sql: str = Query(...)):
             return {"result": [r.__dict__ for r in btree.range_search(int(a), int(b))]}
         elif indice_activo == "hash":
             return {"result": [r.to_tuple() for r in ext_hash.find_range(int(a), int(b))]}
-        # elif indice_activo == "rtree":
-        #     return {"result": rtree.rangeSearch(a, a, b, b)}
+        elif indice_activo == "avl":
+            return {"result": avl.range_search(int(a), int(b))}
+        elif indice_activo == "rtree":
+            return {"result": rtree.rangeSearch(a, b)}
 
-    # INSERT
+    # --- INSERT ---
     if op[0] == "insert":
         campos = op[1]
         r = Registro(
@@ -377,21 +357,21 @@ def run_sql(sql: str = Query(...)):
             avl.insert(r)
         elif indice_activo == "hash":
             ext_hash.insert(r)
-        # elif indice_activo == "rtree":
-            # rtree.insert(
-            #     record_id=r.id,
-            #     lat=r.lat,
-            #     lon=r.lon,
-            #     record_data={
-            #         "fecha": r.fecha,
-            #         "tipo": r.tipo,
-            #         "mag": r.mag,
-            #         "prof": r.prof
-            #     }
-            # )
+        elif indice_activo == "rtree":
+            rtree.insert(
+                record_id=r.id,
+                lat=r.lat,
+                lon=r.lon,
+                record_data={
+                    "fecha": r.fecha,
+                    "tipo": r.tipo,
+                    "mag": r.mag,
+                    "prof": r.prof
+                }
+            )
         return {"message": f"Insertado ID {r.id}"}
 
-    # DELETE
+    # --- DELETE ---
     if op[0] == "delete":
         campo, valor = op[1], op[2]
         if campo != columna_indice:
@@ -404,8 +384,8 @@ def run_sql(sql: str = Query(...)):
             avl.remove(int(valor))
         elif indice_activo == "hash":
             ext_hash.remove(int(valor))
-        # elif indice_activo == "rtree":
-        #     rtree.remove(int(valor))
+        elif indice_activo == "rtree":
+            rtree.remove(int(valor))
         return {"message": f"Eliminado ID {int(valor)}"}
 
     raise HTTPException(400, detail="Sentencia no válida o incompleta.")

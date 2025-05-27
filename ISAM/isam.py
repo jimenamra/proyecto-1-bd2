@@ -1,5 +1,6 @@
 import os
 import struct
+import json
 
 class Registro:
     FORMAT = 'i10s10sffff'  # id, fecha, tipo, lat, lon, mag, prof
@@ -107,6 +108,22 @@ class ISAM:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         if not os.path.exists(path):
             open(path, 'wb').close()
+        self.load_indexes()
+
+    def save_indexes(self):
+        with open("data/isam_index.json", "w") as f:
+            json.dump({
+                "index1": self.index1,
+                "index2": self.index2
+            }, f)
+
+    def load_indexes(self):
+        if os.path.exists("data/isam_index.json"):
+            with open("data/isam_index.json", "r") as f:
+                data = json.load(f)
+                self.index1 = [tuple(i) for i in data["index1"]]
+                self.index2 = [tuple(i) for i in data["index2"]]
+
 
     def _read_bucket(self, offset):
         with open(self.path, 'rb') as f:

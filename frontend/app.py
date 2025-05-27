@@ -90,7 +90,7 @@ with tabs[3]:
                 st.error("Error al guardar el archivo en el backend.")
 
     st.subheader("Ejecutar comando SQL")
-    sql = st.text_area("Escribe una sentencia SQL")
+    sql = st.text_area("Escribe una sentencia SQL", height=200)
     if st.button("Ejecutar SQL", type="primary"):
         r = requests.post(f"{backend}/sql", params={"sql": sql})
         try:

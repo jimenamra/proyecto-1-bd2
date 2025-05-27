@@ -22,6 +22,32 @@ class BTree:
         open(file_idx, 'ab').close()
         open(file_data, 'ab').close()
 
+        self.load_tree() 
+        
+    def save_idx(self):
+        with open(self.file_idx, 'wb') as f:
+            leaves = []
+            self.get_leaves(self.root, leaves)
+            for node in leaves:
+                for k, offset in zip(node.keys, node.offsets):
+                    f.write(struct.pack('ii', k, offset))
+
+    def load_tree(self):
+        if not os.path.exists(self.file_idx):
+            return  # no hay indice guardado previamente
+
+        node = BTNode(leaf=True)
+        with open(self.file_idx, 'rb') as f:
+            while True:
+                data = f.read(struct.calcsize('ii'))
+                if not data:
+                    break
+                k, offset = struct.unpack('ii', data)
+                node.keys.append(k)
+                node.offsets.append(offset)
+        self.root = node
+
+
     def _write_data(self, registro):
         with open(self.file_data, 'ab') as f:
             offset = f.tell()
