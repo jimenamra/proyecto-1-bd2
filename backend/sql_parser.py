@@ -3,7 +3,33 @@ import re
 def parse_sql(sql: str):
     sql = sql.strip().rstrip(';')
 
-    # --- CREATE TABLE ---
+    # --- NUEVO: RANGO ESPACIAL 2D PARA RTREE ---
+    match = re.search(
+        r'is_in_range2d\s*\(\s*lat_min\s*=>\s*([-\d\.]+)\s*,\s*lat_max\s*=>\s*([-\d\.]+)\s*,\s*lon_min\s*=>\s*([-\d\.]+)\s*,\s*lon_max\s*=>\s*([-\d\.]+)\s*\)',
+        sql,
+        re.IGNORECASE
+    )
+    if match:
+        lat_min = float(match.group(1))
+        lat_max = float(match.group(2))
+        lon_min = float(match.group(3))
+        lon_max = float(match.group(4))
+        return ("range2d", lon_min, lat_min, lon_max, lat_max)
+
+    # --- NUEVO: CREATE TABLE FROM "archivo.csv" USING index("columna") ---
+    match = re.match(
+        r'create table\s+(\w+)\s+from\s+"(.+?)"\s+using\s+(\w+)\("(\w+)"\)',
+        sql,
+        re.IGNORECASE
+    )
+    if match:
+        table_name = match.group(1)
+        csv_path = match.group(2)
+        index_type = match.group(3).lower()
+        indexed_column = match.group(4).lower()
+        return ("create_from_csv", table_name, csv_path, index_type, indexed_column)
+
+    # --- CREATE TABLE tradicional ---
     if sql.lower().startswith("create table"):
         match = re.match(r'create table\s+(\w+)\s*\((.+)\)', sql, re.IGNORECASE | re.DOTALL)
         if match:

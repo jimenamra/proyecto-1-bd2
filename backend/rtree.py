@@ -29,7 +29,7 @@ class RTreeIndex:
                 os.remove(filepath)
 
     def insert(self, record_id: int, lat: float, lon: float, record_data: dict):
-        self.idx.insert(record_id, (lat, lon, lat, lon))
+        self.idx.insert(record_id, (lon, lat, lon, lat))  # (x_min, y_min, x_max, y_max)
         self.data[str(record_id)] = {
             "lat": lat,
             "lon": lon,
@@ -41,8 +41,8 @@ class RTreeIndex:
     def search_by_id(self, record_id: int):
         return self.data.get(str(record_id), None)
 
-    def rangeSearch(self, min_coord: float, max_coord: float):
-        results = self.idx.intersection((min_coord, min_coord, max_coord, max_coord))
+    def rangeSearch(self, lon_min: float, lat_min: float, lon_max: float, lat_max: float):
+        results = self.idx.intersection((lon_min, lat_min, lon_max, lat_max))
         return [self.data[str(i)] for i in results if str(i) in self.data]
 
     def remove(self, record_id: int):

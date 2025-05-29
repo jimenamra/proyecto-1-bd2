@@ -129,23 +129,22 @@ def range_search(a: int, b: int):
     return response
 
 @app.get("/range_area/{a}/{b}")
-def range_search_area(a: float, b: float):
-    
-    if not (-90 <= a <= 90 and -180 <= b <= 180):
+def range_search_area(
+    lon_min: float = Query(...), lat_min: float = Query(...),
+    lon_max: float = Query(...), lat_max: float = Query(...)
+):
+    if not (-90 <= lat_min <= 90 and -90 <= lat_max <= 90 and -180 <= lon_min <= 180 and -180 <= lon_max <= 180):
         raise HTTPException(status_code=400, detail="Coordenadas fuera de rango")
 
-    # RTree 
-    response = []
     t0 = time()
-    rtree_result = rtree.rangeSearch(a, b)
+    rtree_result = rtree.rangeSearch(lon_min, lat_min, lon_max, lat_max)
     t1 = time()
-    response.append({
+
+    return [{
         "metodo": "RTree",
         "tiempo": round(t1 - t0, 6),
         "resultados": rtree_result
-    })
-
-    return response
+    }]
 
 @app.post("/insert")
 def insert(req: RegistroRequest):
@@ -297,6 +296,75 @@ def run_sql(sql: str = Query(...)):
             "tipo_columna": tipo_columna
         }
 
+    # --- CREATE FROM CSV ---
+    if op[0] == "create_from_csv":
+        tabla_activa = op[1]
+        path = op[2]
+        indice_activo = op[3]
+        columna_indice = op[4]
+
+        tipo_columna = "float" if indice_activo == "rtree" else "int"  # ejemplo simple
+
+        if indice_activo not in ["isam", "btree", "avl", "hash", "rtree", "seq"]:
+            raise HTTPException(400, detail=f"Índice no válido: {indice_activo}")
+
+        # Cargar archivo CSV
+        registros = []
+        with open(path, newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if indice_activo == "rtree":
+                    try:
+                        lat = float(row["lat"])
+                        lon = float(row["lon"])
+                        mag = float(row["mag"])
+                        prof = float(row["prof"])
+                    except (ValueError, TypeError):
+                        print(f"[WARN] Fila inválida ignorada: {row}")
+                        continue  # saltar esta fila
+
+                    rtree.insert(
+                        record_id=int(row["id"]),
+                        lat=lat,
+                        lon=lon,
+                        record_data={
+                            "fecha": row["fecha"],
+                            "tipo": row["tipo"],
+                            "mag": mag,
+                            "prof": prof
+                        }
+                    )
+                else:
+                    r = Registro(
+                        int(row["id"]),
+                        row["fecha"],
+                        row["tipo"],
+                        float(row["lat"]),
+                        float(row["lon"]),
+                        float(row["mag"]),
+                        float(row["prof"])
+                    )
+                    registros.append(r)
+
+        if indice_activo == "isam":
+            for r in registros:
+                isam.add(r)
+        elif indice_activo == "btree":
+            for r in registros:
+                btree.add(r)
+        elif indice_activo == "avl":
+            for r in registros:
+                avl.insert(r)
+        elif indice_activo == "hash":
+            for r in registros:
+                ext_hash.insert(r)
+
+        return {
+            "message": f"Tabla '{tabla_activa}' creada e indexada por '{columna_indice}' con índice {indice_activo.upper()}.",
+            "archivo": path
+        }
+
+
     # --- validación obligatoria ---
     if not tabla_activa:
         raise HTTPException(400, detail="Debe ejecutar CREATE TABLE primero.")
@@ -334,8 +402,13 @@ def run_sql(sql: str = Query(...)):
             return {"result": [r.to_tuple() for r in ext_hash.find_range(int(a), int(b))]}
         elif indice_activo == "avl":
             return {"result": avl.range_search(int(a), int(b))}
-        elif indice_activo == "rtree":
-            return {"result": rtree.rangeSearch(a, b)}
+
+    # --- NUEVO: RANGE ESPACIAL 2D PARA RTREE ---
+    if op[0] == "range2d":
+        lon_min, lat_min, lon_max, lat_max = op[1:]
+        if indice_activo != "rtree":
+            raise HTTPException(400, detail="Consulta espacial solo permitida con índice RTree.")
+        return {"result": rtree.rangeSearch(lon_min, lat_min, lon_max, lat_max)}
 
     # --- INSERT ---
     if op[0] == "insert":

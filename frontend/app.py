@@ -56,12 +56,24 @@ with tabs[1]:
     st.subheader(" Búsqueda por rango de área")
     col1, col2 = st.columns(2)
     with col1:
-        a1 = st.number_input("Ingresar Latitud", step=0.0001, format="%.6f")
+        lat_min = st.number_input("Latitud mínima", format="%.6f")
+        lat_max = st.number_input("Latitud máxima", format="%.6f")
     with col2:
-        b1 = st.number_input("Ingresar Longitud", step=0.0001, format="%.6f")
-    if st.button("Buscar por rango de area", type="primary", key="buscar_rango_btn"):
-        r = requests.get(f"{backend}/range_area/{a1}/{b1}")
-        st.json(r.json())
+        lon_min = st.number_input("Longitud mínima", format="%.6f")
+        lon_max = st.number_input("Longitud máxima", format="%.6f")
+
+    if st.button("Buscar por rango de área", type="primary", key="buscar_rango_area"):
+        params = {
+            "lat_min": lat_min,
+            "lat_max": lat_max,
+            "lon_min": lon_min,
+            "lon_max": lon_max
+        }
+        r = requests.get(f"{backend}/range_area/", params=params)
+        if r.status_code == 200:
+            st.json(r.json())
+        else:
+            st.error(r.text)
 
 
 # ========== ❌ TAB: ELIMINAR ==========
